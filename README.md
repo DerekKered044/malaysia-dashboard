@@ -4,7 +4,6 @@ A live dashboard showing weather, air quality and ringgit exchange rates for all
 
 🔗 **Live demo:** https://derekkered044.github.io/malaysia-dashboard/
 
-![Screenshot of the dashboard](screenshot.png)
 
 ## What it shows
 - Current weather and a 7-day forecast for each state capital and federal territory
@@ -25,7 +24,7 @@ HTML, CSS and JavaScript, Chart.js for the chart, and GitHub Pages for hosting. 
 - Each place is represented by one point, usually the state capital.
 
 ## What I learned
-- [One or two things you learned, e.g. how to call web APIs with fetch, handle errors and loading states, or deploy with GitHub Pages]
+- how to call web APIs with fetch, handle errors, loading states, and deploy with GitHub Pages.
 
 ## Run it locally
 Download `index.html` and open it in a browser. It needs an internet connection to load the data.
