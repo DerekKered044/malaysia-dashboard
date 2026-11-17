@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Malaysia Daily Snapshot</title>
+<style>
+:root{color-scheme:light dark;--bg:#eef3f1;--panel:#fbfdfc;--ink:#14302e;--muted:#566e6b;--line:#cddbd7;--accent:#0f766e;--hib:#c2255c}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1b1a;--panel:#142625;--ink:#e3efec;--muted:#9db5b0;--line:#28403c;--accent:#5fd0c4;--hib:#ff7aa8}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:28px 18px 56px}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between}
+h1{font:600 1.7rem/1.2 Georgia,"Times New Roman",serif;margin:0}
+.sub{margin:4px 0 0;color:var(--muted);max-width:52ch}
+select{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+h2{font-size:1.05rem;font-weight:600;margin:0 0 10px}
+.muted{color:var(--muted);font-size:.92rem}
+.err{color:#c0392b}
+#weather{margin:30px 0 26px}
+.temp{font:600 4.2rem/1 Georgia,"Times New Roman",serif}
+.cond{font-size:1.15rem;margin:6px 0 2px}
+.days{display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:0;margin-top:20px;overflow-x:auto;border-top:1px solid var(--line)}
+.day{padding:12px 6px;text-align:center;font-size:.88rem;border-right:1px solid var(--line)}
+.day:last-child{border-right:0}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.aqi{font:600 3rem/1 Georgia,"Times New Roman",serif}
+.badge{display:inline-block;margin-left:10px;padding:2px 11px;border-radius:99px;color:#fff;font-size:.85rem;font-weight:600;vertical-align:middle}
+.chartbox{position:relative;height:200px;margin-top:6px}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:600;color:var(--muted)}
+#compare{margin-top:30px}
+footer{margin-top:34px;color:var(--muted);font-size:.82rem;max-width:80ch}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>Malaysia Daily Snapshot</h1>
+    <p class="sub">Weather, air quality and ringgit exchange rates, pulled live from open data sources.</p>
+  </div>
+  <label>City <select id="city"></select></label>
+</header>
+
+<section id="weather" aria-live="polite"></section>
+
+<div class="grid">
+  <section class="panel"><h2>Air quality</h2><div id="air" aria-live="polite"></div></section>
+  <section class="panel"><h2>Ringgit exchange rates</h2><div id="fx" aria-live="polite"></div></section>
+</div>
+
+<section id="compare"><h2>How the cities compare today</h2><div id="cmp"></div></section>
+
+<footer>
+  Weather and air quality data by <a href="https://open-meteo.com/">Open-Meteo.com</a>, licensed CC BY 4.0 and free for non-commercial use. Exchange rates come from <a href="https://frankfurter.dev/">Frankfurter</a>, which publishes central bank reference rates once a day, so they are not live trading prices. Air quality values are modelled estimates, not official readings from Malaysia’s Department of Environment.
+</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// One city per state and federal territory (the 3 territories first, then the states A to Z).
+// To add another place, add a line with its name, region and coordinates.
+const CITIES = [
+  {n:"Kuala Lumpur",     s:"Federal Territory", lat:3.139,  lon:101.687},
+  {n:"Labuan",           s:"Federal Territory", lat:5.2831, lon:115.2308},
+  {n:"Putrajaya",        s:"Federal Territory", lat:2.9264, lon:101.6964},
+  {n:"Alor Setar",       s:"Kedah",             lat:6.1248, lon:100.3678},
+  {n:"Johor Bahru",      s:"Johor",             lat:1.4927, lon:103.7414},
+  {n:"Kangar",           s:"Perlis",            lat:6.4414, lon:100.1986},
+  {n:"Kota Bharu",       s:"Kelantan",          lat:6.1254, lon:102.2381},
+  {n:"Kota Kinabalu",    s:"Sabah",             lat:5.9804, lon:116.0735},
+  {n:"Kuala Terengganu", s:"Terengganu",        lat:5.3302, lon:103.1408},
+  {n:"Kuantan",          s:"Pahang",            lat:3.8077, lon:103.326},
+  {n:"Kuching",          s:"Sarawak",           lat:1.5535, lon:110.3593},
+  {n:"George Town",      s:"Penang",            lat:5.414,  lon:100.329},
+  {n:"Ipoh",             s:"Perak",             lat:4.5975, lon:101.0901},
+  {n:"Melaka",           s:"Melaka",            lat:2.1896, lon:102.2501},
+  {n:"Seremban",         s:"Negeri Sembilan",   lat:2.7259, lon:101.9378},
+  {n:"Shah Alam",        s:"Selangor",          lat:3.0738, lon:101.5183}
+];
+const QUOTES = ["USD","SGD","EUR","GBP","JPY"];
+const TZ = "Asia%2FKuala_Lumpur";
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+function wx(c){
+  if(c===0) return ["Clear","☀️"];
+  if(c<=2)  return ["Partly cloudy","⛅"];
+  if(c===3) return ["Overcast","☁️"];
+  if(c<=48) return ["Fog","🌫️"];
+  if(c<=57) return ["Drizzle","🌦️"];
+  if(c<=67) return ["Rain","🌧️"];
+  if(c<=77) return ["Snow","❄️"];
+  if(c<=82) return ["Rain showers","🌧️"];
+  if(c<=86) return ["Snow showers","❄️"];
+  return ["Thunderstorm","⛈️"];
+}
+
+// US AQI bands
+function aqiCat(v){
+  if(v==null) return ["No data","#6b7b78"];
+  if(v<=50)   return ["Good","#2e7d4f"];
+  if(v<=100)  return ["Moderate","#8a6a00"];
+  if(v<=150)  return ["Unhealthy for sensitive groups","#b85c00"];
+  if(v<=200)  return ["Unhealthy","#b83227"];
+  if(v<=300)  return ["Very unhealthy","#7d3c98"];
+  return ["Hazardous","#6d1f2f"];
+}
+
+async function loadWeather(c){
+  const el = $("weather");
+  el.innerHTML = '<p class="muted">Loading weather…</p>';
+  try{
+    const d = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=${TZ}`);
+    const k = d.current, [txt, icon] = wx(k.weather_code);
+    const days = d.daily.time.map((dt,j)=>{
+      const ic = wx(d.daily.weather_code[j])[1];
+      const name = new Date(dt+"T00:00").toLocaleDateString("en-GB",{weekday:"short"});
+      return `<div class="day"><b>${name}</b><div>${ic}</div><div>${Math.round(d.daily.temperature_2m_max[j])}°</div><div class="muted">${Math.round(d.daily.temperature_2m_min[j])}°</div><div class="muted">${d.daily.precipitation_sum[j]} mm</div></div>`;
+    }).join("");
+    el.innerHTML = `<div class="temp">${Math.round(k.temperature_2m)}°C</div>
+      <div class="cond">${icon} ${txt} in ${c.n}</div>
+      <div class="muted">Feels like ${Math.round(k.apparent_temperature)}°C, humidity ${k.relative_humidity_2m}%, wind ${k.wind_speed_10m} km/h</div>
+      <div class="days">${days}</div>`;
+  }catch(e){
+    el.innerHTML = `<p class="err">Couldn’t load the weather (${e.message}). Check your connection and try again.</p>`;
+  }
+}
+
+async function loadAir(c){
+  const el = $("air");
+  el.innerHTML = '<p class="muted">Loading air quality…</p>';
+  try{
+    const d = await getJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${c.lat}&longitude=${c.lon}&current=us_aqi,pm2_5,pm10,ozone&timezone=${TZ}`);
+    const k = d.current, [lab, col] = aqiCat(k.us_aqi);
+    el.innerHTML = `<div><span class="aqi">${k.us_aqi ?? "–"}</span><span class="badge" style="background:${col}">${lab}</span></div>
+      <p class="muted">PM2.5 ${k.pm2_5} µg/m³<br>PM10 ${k.pm10} µg/m³<br>Ozone ${k.ozone} µg/m³</p>
+      <p class="muted">Scale: US AQI. Higher means more polluted.</p>`;
+  }catch(e){
+    el.innerHTML = `<p class="err">Couldn’t load air quality (${e.message}). Try again shortly.</p>`;
+  }
+}
+
+let chart;
+async function loadFx(){
+  const el = $("fx");
+  el.innerHTML = '<p class="muted">Loading exchange rates…</p>';
+  try{
+    const end = new Date(), start = new Date(end - 30*864e5);
+    const iso = d => d.toISOString().slice(0,10);
+    const [latest, series] = await Promise.all([
+      getJSON(`https://api.frankfurter.dev/v1/latest?base=MYR&symbols=${QUOTES.join(",")}`),
+      getJSON(`https://api.frankfurter.dev/v1/${iso(start)}..${iso(end)}?base=MYR&symbols=USD`)
+    ]);
+    const rows = QUOTES.map(q =>
+      `<tr><td>1 ${q}</td><td>RM ${(1/latest.rates[q]).toFixed(q==="JPY"?4:3)}</td></tr>`).join("");
+    const labels = Object.keys(series.rates);
+    const vals = labels.map(d => +(1/series.rates[d].USD).toFixed(4));
+    el.innerHTML = `<p class="muted">Daily reference rates, ${latest.date}</p>
+      <div class="scroll"><table><tbody>${rows}</tbody></table></div>
+      <p class="muted" style="margin-top:14px">RM per 1 USD over the last 30 days</p>
+      <div class="chartbox"><canvas id="fxChart"></canvas></div>`;
+    if(chart) chart.destroy();
+    Chart.defaults.color = css("--muted");
+    chart = new Chart($("fxChart"), {
+      type:"line",
+      data:{labels, datasets:[{data:vals, borderColor:css("--hib"), borderWidth:2, tension:.25, pointRadius:0}]},
+      options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{x:{ticks:{maxTicksLimit:6}, grid:{display:false}}, y:{grid:{color:css("--line")}}}}
+    });
+  }catch(e){
+    el.innerHTML = `<p class="err">Couldn’t load exchange rates (${e.message}). Try again shortly.</p>`;
+  }
+}
+
+async function loadCompare(){
+  const el = $("cmp");
+  el.innerHTML = '<p class="muted">Loading comparison…</p>';
+  try{
+    const la = CITIES.map(c=>c.lat).join(","), lo = CITIES.map(c=>c.lon).join(",");
+    const [aq, wf] = await Promise.all([
+      getJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${la}&longitude=${lo}&current=us_aqi,pm2_5&timezone=${TZ}`),
+      getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&daily=precipitation_sum&timezone=${TZ}`)
+    ]);
+    const rows = CITIES.map((c,i)=>({
+      n:c.n, aqi:aq[i].current.us_aqi, pm:aq[i].current.pm2_5,
+      rain:wf[i].daily.precipitation_sum.reduce((a,b)=>a+b,0)
+    })).sort((a,b)=>b.pm-a.pm);
+    const wettest = [...rows].sort((a,b)=>b.rain-a.rain)[0];
+    const body = rows.map(r=>{
+      const [lab,col] = aqiCat(r.aqi);
+      return `<tr><td>${r.n}</td><td>${r.pm}</td><td>${r.aqi ?? "–"} <span class="badge" style="background:${col}">${lab}</span></td><td>${r.rain.toFixed(1)}</td></tr>`;
+    }).join("");
+    el.innerHTML = `<p class="muted">${rows[0].n} has the highest PM2.5 right now and ${rows[rows.length-1].n} the lowest. ${wettest.n} expects the most rain this week. One snapshot isn’t a trend, so compare several days before drawing conclusions.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>City</th><th>PM2.5 (µg/m³)</th><th>US AQI</th><th>Rain, next 7 days (mm)</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+  }catch(e){
+    el.innerHTML = `<p class="err">Couldn’t load the comparison (${e.message}). Try again shortly.</p>`;
+  }
+}
+
+const sel = $("city");
+CITIES.forEach((c,i)=> sel.add(new Option(c.n === c.s ? c.n : `${c.n} (${c.s})`, i)));
+sel.addEventListener("change", ()=>{ const c = CITIES[+sel.value]; loadWeather(c); loadAir(c); });
+loadWeather(CITIES[0]); loadAir(CITIES[0]); loadFx(); loadCompare();
+</script>
+</body>
+</html>
